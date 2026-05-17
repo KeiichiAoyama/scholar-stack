@@ -1,10 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState } from 'react';
-
-const MOCK_USERS = {
-  dosen01: { password: 'password', name: 'Dr. Erick Fernando, S.Kom, M.S.I', role: 'Lecturer', sintaId: '207171' },
-  admin01: { password: 'password', name: 'Admin UMN', role: 'Admin', sintaId: null },
-};
+import { api } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -24,16 +20,13 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(getStoredUser);
   const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(getStoredUser()));
 
-  function login(username, password) {
-    const found = MOCK_USERS[username];
-    if (!found || found.password !== password) {
-      return false;
-    }
-    const userData = { username, name: found.name, role: found.role, sintaId: found.sintaId };
+  async function login(username, password) {
+    const response = await api.post('/auth/login', { username, password });
+    const userData = response.data;
     setUser(userData);
     setIsAuthenticated(true);
     localStorage.setItem('scholarstack_user', JSON.stringify(userData));
-    return true;
+    return userData;
   }
 
   function logout() {

@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom';
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BookOpen, GraduationCap, Mail, Search, UserRound } from 'lucide-react';
 import { Input } from '../components/ui/FormField';
-import { mockArticles, mockMetrics, mockUsers } from '../data/mock';
+import { getLecturers } from '../services/dataService';
 
 const KEYWORDS = [
   'Blockchain technology',
@@ -21,25 +21,10 @@ function getInitials(name) {
     .toUpperCase();
 }
 
-function lecturerStats(lecturer, index) {
-  const publicationCount = mockArticles.filter((_, articleIndex) => articleIndex % 5 === index % 5).length + 2;
-  return {
-    publicationCount,
-    score: Math.max(420, mockMetrics.sintaScoreOverall - index * 148),
-    score3yr: Math.max(120, mockMetrics.sintaScore3yr - index * 34),
-    department: index % 2 === 0 ? 'S1 - Sistem Informasi' : 'S1 - Informatika',
-    keywords: KEYWORDS.slice(index % 3, (index % 3) + 3),
-    ...lecturer,
-  };
-}
-
 export default function ExplorePage() {
   const [query, setQuery] = useState('');
-
-  const lecturers = useMemo(
-    () => mockUsers.filter((user) => user.role === 'Lecturer').map(lecturerStats),
-    []
-  );
+  const [lecturers, setLecturers] = useState([]);
+  useEffect(() => { getLecturers().then((items) => setLecturers(items.map((item, index) => ({ ...item, keywords: KEYWORDS.slice(index % 3, (index % 3) + 3) })))); }, []);
 
   const filteredLecturers = lecturers.filter((lecturer) => {
     const haystack = `${lecturer.name} ${lecturer.nidn} ${lecturer.email} ${lecturer.department} ${lecturer.keywords.join(' ')}`.toLowerCase();

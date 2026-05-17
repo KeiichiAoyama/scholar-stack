@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Edit, Search, UserPlus, X } from 'lucide-react';
 import Button from '../components/ui/Button';
 import FormField, { Input, Select } from '../components/ui/FormField';
-import { mockUsers } from '../data/mock';
+import { createUser, getUsers, updateUser } from '../services/dataService';
 
 const ROLE_COLORS = { Lecturer: 'bg-blue-100 text-blue-700', Admin: 'bg-red-100 text-red-700' };
 const STATUS_COLORS = { Active: 'bg-green-100 text-green-700', Inactive: 'bg-gray-100 text-gray-500' };
 
 const EMPTY_USER = {
+  username: '',
+  password: '',
   name: '',
   nidn: '',
   email: '',
@@ -17,10 +19,18 @@ const EMPTY_USER = {
   departmentUnit: '',
   phone: '',
   academicGrade: 'Lektor',
+  sintaId: '',
+  sintaUsername: '',
+  sintaPassword: '',
+  scopusId: '',
+  scopusApiKey: '',
+  scopusInstToken: '',
+  googleScholarId: '',
 };
 
 function UserProfileModal({ mode, form, onChange, onClose, onSubmit }) {
   const title = mode === 'add' ? 'Add User' : 'Edit User';
+  const usernameLocked = mode === 'edit' && form.username === 'admin01';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 p-4">
@@ -45,6 +55,12 @@ function UserProfileModal({ mode, form, onChange, onClose, onSubmit }) {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             <FormField label="Name" required>
               <Input name="name" value={form.name} onChange={onChange} />
+            </FormField>
+            <FormField label="Username" required>
+              <Input name="username" value={form.username || ''} onChange={onChange} disabled={usernameLocked} />
+            </FormField>
+            <FormField label={mode === 'add' ? 'Password' : 'New Password'}>
+              <Input type="password" name="password" value={form.password || ''} onChange={onChange} placeholder={mode === 'edit' ? 'Leave blank to keep current password' : ''} />
             </FormField>
             <FormField label="Email" required>
               <Input type="email" name="email" value={form.email} onChange={onChange} />
@@ -86,6 +102,31 @@ function UserProfileModal({ mode, form, onChange, onClose, onSubmit }) {
                 <option value="Institution Administrator">Institution Administrator</option>
               </Select>
             </FormField>
+            {form.role === 'Lecturer' && (
+              <>
+                <FormField label="Google Scholar ID">
+                  <Input name="googleScholarId" value={form.googleScholarId || ''} onChange={onChange} />
+                </FormField>
+                <FormField label="Scopus ID">
+                  <Input name="scopusId" value={form.scopusId || ''} onChange={onChange} />
+                </FormField>
+                <FormField label="Scopus API Key">
+                  <Input name="scopusApiKey" value={form.scopusApiKey || ''} onChange={onChange} />
+                </FormField>
+                <FormField label="Scopus Inst Token">
+                  <Input name="scopusInstToken" value={form.scopusInstToken || ''} onChange={onChange} />
+                </FormField>
+                <FormField label="SINTA ID">
+                  <Input name="sintaId" value={form.sintaId || ''} onChange={onChange} />
+                </FormField>
+                <FormField label="SINTA Username">
+                  <Input name="sintaUsername" value={form.sintaUsername || ''} onChange={onChange} />
+                </FormField>
+                <FormField label="SINTA Password">
+                  <Input type="password" name="sintaPassword" value={form.sintaPassword || ''} onChange={onChange} />
+                </FormField>
+              </>
+            )}
           </div>
         </div>
 
@@ -100,19 +141,26 @@ function UserProfileModal({ mode, form, onChange, onClose, onSubmit }) {
 
 export default function UserManagementPage() {
   const [query, setQuery] = useState('');
-  const [users, setUsers] = useState(mockUsers);
+  const [users, setUsers] = useState([]);
   const [modalMode, setModalMode] = useState(null);
   const [form, setForm] = useState(EMPTY_USER);
+  useEffect(() => { getUsers().then(setUsers); }, []);
 
   const filtered = users.filter(
     (u) =>
+      u.username.toLowerCase().includes(query.toLowerCase()) ||
       u.name.toLowerCase().includes(query.toLowerCase()) ||
       u.email.toLowerCase().includes(query.toLowerCase()) ||
       u.nidn.includes(query)
   );
 
   function openAddModal() {
-    setForm(EMPTY_USER);
+    const lecturerNumbers = users
+      .map((user) => user.username?.match(/^dosen(\d+)$/)?.[1])
+      .filter(Boolean)
+      .map(Number);
+    const nextLecturerNumber = (lecturerNumbers.length ? Math.max(...lecturerNumbers) : 0) + 1;
+    setForm({ ...EMPTY_USER, username: `dosen${String(nextLecturerNumber).padStart(2, '0')}` });
     setModalMode('add');
   }
 
@@ -124,20 +172,34 @@ export default function UserManagementPage() {
       phone: user.role === 'Admin' ? '021-5422-0808' : '085266296098',
       academicGrade: user.role === 'Admin' ? 'Institution Administrator' : 'Lektor',
       ...user,
+      password: '',
     });
     setModalMode('edit');
   }
 
   function handleFormChange(event) {
-    setForm((previous) => ({ ...previous, [event.target.name]: event.target.value }));
+    const { name, value } = event.target;
+    setForm((previous) => {
+      if (name === 'role' && value === 'Lecturer' && !previous.username) {
+        const lecturerNumbers = users
+          .map((user) => user.username?.match(/^dosen(\d+)$/)?.[1])
+          .filter(Boolean)
+          .map(Number);
+        const nextLecturerNumber = (lecturerNumbers.length ? Math.max(...lecturerNumbers) : 0) + 1;
+        return { ...previous, role: value, username: `dosen${String(nextLecturerNumber).padStart(2, '0')}` };
+      }
+      return { ...previous, [name]: value };
+    });
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     if (modalMode === 'add') {
-      setUsers((previous) => [{ ...form, id: Date.now() }, ...previous]);
+      const created = await createUser(form);
+      setUsers((previous) => [created, ...previous]);
     } else {
-      setUsers((previous) => previous.map((user) => (user.id === form.id ? form : user)));
+      const updated = await updateUser(form.id, form);
+      setUsers((previous) => previous.map((user) => (user.id === form.id ? updated : user)));
     }
     setModalMode(null);
   }
@@ -149,7 +211,7 @@ export default function UserManagementPage() {
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="Search by name, email, or NIDN..."
+            placeholder="Search by username, name, email, or NIDN..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
@@ -167,6 +229,7 @@ export default function UserManagementPage() {
             <tr>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide w-10">No.</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Name</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Username</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">NIDN</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Email</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Role</th>
@@ -177,13 +240,14 @@ export default function UserManagementPage() {
           <tbody className="divide-y divide-gray-100">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-gray-400 text-sm">No users found.</td>
+                <td colSpan={8} className="px-4 py-8 text-center text-gray-400 text-sm">No users found.</td>
               </tr>
             ) : (
               filtered.map((u, i) => (
                 <tr key={u.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3 text-gray-400">{i + 1}</td>
                   <td className="px-4 py-3 font-medium text-gray-800">{u.name}</td>
+                  <td className="px-4 py-3 text-gray-600 font-mono text-xs">{u.username}</td>
                   <td className="px-4 py-3 text-gray-600 font-mono text-xs">{u.nidn}</td>
                   <td className="px-4 py-3 text-gray-600">{u.email}</td>
                   <td className="px-4 py-3">

@@ -11,6 +11,7 @@ import ArticleListingPage from './pages/ArticleListingPage';
 import ResearchListingPage from './pages/ResearchListingPage';
 import CommunityServicePage from './pages/CommunityServicePage';
 import UserManagementPage from './pages/UserManagementPage';
+import GrantMasterPage from './pages/GrantMasterPage';
 
 export default function App() {
   return (
@@ -34,6 +35,7 @@ export default function App() {
 
           <Route element={<ProtectedRoute allowedRoles={['Admin']} />}>
             <Route element={<AppLayout />}>
+              <Route path="/admin/grants" element={<GrantMasterPage />} />
               <Route path="/admin/users" element={<UserManagementPage />} />
             </Route>
           </Route>

@@ -1,6 +1,6 @@
 import { createElement, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Search, User, Users, ChevronDown, ChevronRight, LogOut, BookOpen } from 'lucide-react';
+import { Award, LayoutDashboard, Search, User, Users, ChevronDown, ChevronRight, LogOut, BookOpen } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 const MY_PAPERS_CHILDREN = [
@@ -107,13 +107,22 @@ export default function Sidebar() {
 
         {/* Admin-only: User Management */}
         {user?.role === 'Admin' && (
-          <NavLink
-            to="/admin/users"
-            className={({ isActive }) => `${linkBase} ${isActive ? activeClass : inactiveClass}`}
-          >
-            <Users size={18} />
-            <span>User Management</span>
-          </NavLink>
+          <>
+            <NavLink
+              to="/admin/grants"
+              className={({ isActive }) => `${linkBase} ${isActive ? activeClass : inactiveClass}`}
+            >
+              <Award size={18} />
+              <span>Master Grants</span>
+            </NavLink>
+            <NavLink
+              to="/admin/users"
+              className={({ isActive }) => `${linkBase} ${isActive ? activeClass : inactiveClass}`}
+            >
+              <Users size={18} />
+              <span>User Management</span>
+            </NavLink>
+          </>
         )}
       </nav>
 

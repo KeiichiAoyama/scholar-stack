@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Building2, IdCard, Mail, ShieldCheck, UserRound } from 'lucide-react';
 import FormField, { Input, Select } from '../components/ui/FormField';
 import Button from '../components/ui/Button';
 import { useAuth } from '../context/AuthContext';
-import { mockSintaProfile, mockPddiktiProfile } from '../data/mock';
+import { getProfile, updateProfile } from '../services/profileService';
 
 const ADMIN_PROFILE = {
   name: 'Admin UMN',
@@ -17,7 +17,7 @@ const ADMIN_PROFILE = {
 };
 
 function getInitials(name) {
-  return name
+  return (name || '')
     .split(' ')
     .slice(0, 2)
     .map((word) => word[0])
@@ -31,11 +31,11 @@ function ProfileHero({ profile, role }) {
       <div className="bg-primary px-6 py-6 text-white">
         <div className="flex flex-col md:flex-row md:items-center gap-5">
           <div className="w-20 h-20 rounded-full bg-secondary flex items-center justify-center text-2xl font-bold text-white border-4 border-white/20">
-            {getInitials(profile.name)}
+            {getInitials(profile.name) || '--'}
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-white/70 text-sm">{role === 'Admin' ? 'Administrator Profile' : 'Lecturer Profile'}</p>
-            <h2 className="text-2xl font-semibold mt-1 truncate">{profile.name}</h2>
+            <h2 className="text-2xl font-semibold mt-1 truncate">{profile.name || 'Loading profile...'}</h2>
             <p className="text-white/75 text-sm mt-1">{profile.affiliation}</p>
           </div>
           <span className="self-start md:self-center rounded-full bg-white/10 border border-white/20 px-3 py-1 text-sm font-medium">
@@ -80,13 +80,12 @@ function ProfileHero({ profile, role }) {
 export default function ProfilePage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
-  const [lecturerProfile, setLecturerProfile] = useState({
-    ...mockSintaProfile,
-    ...mockPddiktiProfile,
-    email: 'erick.fernando@student.umn.ac.id',
-  });
+  const [lecturerProfile, setLecturerProfile] = useState({});
   const [adminProfile, setAdminProfile] = useState(ADMIN_PROFILE);
   const activeProfile = isAdmin ? adminProfile : lecturerProfile;
+  useEffect(() => {
+    if (!isAdmin && user?.id) getProfile(user.id).then(setLecturerProfile);
+  }, [isAdmin, user?.id]);
 
   function handleLecturerChange(event) {
     setLecturerProfile((previous) => ({ ...previous, [event.target.name]: event.target.value }));
@@ -96,9 +95,9 @@ export default function ProfilePage() {
     setAdminProfile((previous) => ({ ...previous, [event.target.name]: event.target.value }));
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
-    console.log('Profile updated:', activeProfile);
+    if (!isAdmin) setLecturerProfile(await updateProfile(user.id, lecturerProfile));
   }
 
   if (isAdmin) {
@@ -158,31 +157,46 @@ export default function ProfilePage() {
           <h3 className="text-sm font-semibold text-gray-700 mb-4">Lecturer Identity</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           <FormField label="Status">
-            <Select name="status" value={lecturerProfile.status} onChange={handleLecturerChange}>
+            <Select name="status" value={lecturerProfile.status || ''} onChange={handleLecturerChange}>
               <option value="Lecturer">Lecturer</option>
               <option value="Admin">Admin</option>
             </Select>
           </FormField>
           <FormField label="NIDN / NIDK / NUP / NIP">
-            <Input name="nidn" value={lecturerProfile.nidn} onChange={handleLecturerChange} />
+            <Input name="nidn" value={lecturerProfile.nidn || ''} onChange={handleLecturerChange} />
           </FormField>
           <FormField label="Name" required>
-            <Input name="name" value={lecturerProfile.name} onChange={handleLecturerChange} />
+            <Input name="name" value={lecturerProfile.name || ''} onChange={handleLecturerChange} />
           </FormField>
           <FormField label="Email">
-            <Input type="email" name="email" value={lecturerProfile.email} onChange={handleLecturerChange} />
+            <Input type="email" name="email" value={lecturerProfile.email || ''} onChange={handleLecturerChange} />
           </FormField>
           <FormField label="Affiliation">
-            <Input name="affiliation" value={lecturerProfile.affiliation} onChange={handleLecturerChange} />
+            <Input name="affiliation" value={lecturerProfile.affiliation || ''} onChange={handleLecturerChange} />
           </FormField>
           <FormField label="Department / Unit">
-            <Input name="departmentUnit" value={lecturerProfile.departmentUnit} onChange={handleLecturerChange} />
+            <Input name="departmentUnit" value={lecturerProfile.departmentUnit || ''} onChange={handleLecturerChange} />
           </FormField>
           <FormField label="Google Scholar ID">
-            <Input name="googleScholarId" value={lecturerProfile.googleScholarId} onChange={handleLecturerChange} />
+            <Input name="googleScholarId" value={lecturerProfile.googleScholarId || ''} onChange={handleLecturerChange} />
           </FormField>
           <FormField label="Scopus ID">
-            <Input name="scopusId" value={lecturerProfile.scopusId} onChange={handleLecturerChange} />
+            <Input name="scopusId" value={lecturerProfile.scopusId || ''} onChange={handleLecturerChange} />
+          </FormField>
+          <FormField label="Scopus API Key">
+            <Input name="scopusApiKey" value={lecturerProfile.scopusApiKey || ''} onChange={handleLecturerChange} />
+          </FormField>
+          <FormField label="Scopus Inst Token">
+            <Input name="scopusInstToken" value={lecturerProfile.scopusInstToken || ''} onChange={handleLecturerChange} />
+          </FormField>
+          <FormField label="SINTA ID">
+            <Input name="sintaId" value={lecturerProfile.sintaId || ''} onChange={handleLecturerChange} />
+          </FormField>
+          <FormField label="SINTA Username">
+            <Input name="sintaUsername" value={lecturerProfile.sintaUsername || ''} onChange={handleLecturerChange} />
+          </FormField>
+          <FormField label="SINTA Password">
+            <Input type="password" name="sintaPassword" value={lecturerProfile.sintaPassword || ''} onChange={handleLecturerChange} />
           </FormField>
           <FormField label="Academic Grade">
             <Select name="academicGrade" value={lecturerProfile.academicGrade} onChange={handleLecturerChange}>

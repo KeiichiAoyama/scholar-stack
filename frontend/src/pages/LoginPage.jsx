@@ -19,12 +19,13 @@ export default function LoginPage() {
   async function handleSubmit(e) {
     e.preventDefault();
     setLoading(true);
-    const ok = login(form.username, form.password);
-    setLoading(false);
-    if (ok) {
+    try {
+      await login(form.username, form.password);
       navigate('/dashboard');
-    } else {
+    } catch {
       setError('Invalid username or password.');
+    } finally {
+      setLoading(false);
     }
   }
 
