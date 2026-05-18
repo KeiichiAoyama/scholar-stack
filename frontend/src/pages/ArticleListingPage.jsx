@@ -10,7 +10,16 @@ import { Input, Select } from '../components/ui/FormField';
 import { useAuth } from '../context/AuthContext';
 import { usePagination } from '../hooks/usePagination';
 import { getArticles } from '../services/articleService';
-import { getDashboard, getGrants, getResearches, getServices, saveArticleDocument, synchronizeLecturer, uploadArticleDocumentFile } from '../services/dataService';
+import {
+  getArticleDocument,
+  getDashboard,
+  getGrants,
+  getResearches,
+  getServices,
+  saveArticleDocument,
+  synchronizeLecturer,
+  uploadArticleDocumentFile,
+} from '../services/dataService';
 
 const SOURCES = [
   { key: 'scopus', label: 'Scopus' },
@@ -63,7 +72,35 @@ export default function ArticleListingPage() {
   const [syncMessage, setSyncMessage] = useState('');
   useEffect(() => {
     if (!user?.id) return;
-    getArticles(user.id, source).then(setArticles);
+    async function loadPageData() {
+      const nextArticles = await getArticles(user.id, source);
+      setArticles(nextArticles);
+      const nextDocuments = await Promise.all(
+        nextArticles.map(async (article) => {
+          const document = await getArticleDocument(article.id);
+          const relatedWork = document.relatedType && document.relatedId
+            ? `${document.relatedType}-${document.relatedId}`
+            : '';
+          return [
+            article.id,
+            {
+              label: document.label || '',
+              grantName: document.grantName || '',
+              grantOther: '',
+              file: null,
+              fileName: document.fileName || '',
+              filePath: document.filePath || '',
+              relatedWork,
+              saving: false,
+              saveMessage: '',
+              completed: Boolean(document.label && document.fileName && relatedWork),
+            },
+          ];
+        }),
+      );
+      setDocuments(Object.fromEntries(nextDocuments));
+    }
+    loadPageData();
     getDashboard(user.id).then(setDashboard);
     getResearches(user.id).then(setResearches);
     getServices(user.id).then(setServices);
@@ -188,6 +225,30 @@ export default function ArticleListingPage() {
       setResearches(nextResearches);
       setServices(nextServices);
       setGrants(nextGrants);
+      const nextDocuments = await Promise.all(
+        nextArticles.map(async (article) => {
+          const document = await getArticleDocument(article.id);
+          const relatedWork = document.relatedType && document.relatedId
+            ? `${document.relatedType}-${document.relatedId}`
+            : '';
+          return [
+            article.id,
+            {
+              label: document.label || '',
+              grantName: document.grantName || '',
+              grantOther: '',
+              file: null,
+              fileName: document.fileName || '',
+              filePath: document.filePath || '',
+              relatedWork,
+              saving: false,
+              saveMessage: '',
+              completed: Boolean(document.label && document.fileName && relatedWork),
+            },
+          ];
+        }),
+      );
+      setDocuments(Object.fromEntries(nextDocuments));
       setSyncMessage(result.warnings?.length ? result.warnings.join(' ') : 'Synchronization completed.');
     } catch (error) {
       setSyncMessage(error.response?.data?.message || 'Synchronization failed.');
