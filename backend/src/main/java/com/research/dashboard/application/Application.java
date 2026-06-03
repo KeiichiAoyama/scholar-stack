@@ -11,6 +11,7 @@ import com.research.dashboard.application.config.ResearchDashboardProperties;
 public class Application {
 
 	public static void main(String[] args) {
+		System.setProperty("java.net.preferIPv4Stack", "true");
 		SpringApplication.run(Application.class, args);
 	}
 

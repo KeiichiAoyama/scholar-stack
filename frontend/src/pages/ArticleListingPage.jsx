@@ -12,7 +12,6 @@ import { usePagination } from '../hooks/usePagination';
 import { getArticles } from '../services/articleService';
 import {
   getArticleDocument,
-  getDashboard,
   getGrants,
   getResearches,
   getServices,
@@ -64,7 +63,6 @@ export default function ArticleListingPage() {
   const [quartileQuery, setQuartileQuery] = useState('');
   const [documents, setDocuments] = useState({});
   const [articles, setArticles] = useState([]);
-  const [dashboard, setDashboard] = useState(null);
   const [researches, setResearches] = useState([]);
   const [services, setServices] = useState([]);
   const [grants, setGrants] = useState([]);
@@ -101,7 +99,6 @@ export default function ArticleListingPage() {
       setDocuments(Object.fromEntries(nextDocuments));
     }
     loadPageData();
-    getDashboard(user.id).then(setDashboard);
     getResearches(user.id).then(setResearches);
     getServices(user.id).then(setServices);
     getGrants().then(setGrants);
@@ -213,15 +210,13 @@ export default function ArticleListingPage() {
     setSyncMessage('');
     try {
       const result = await synchronizeLecturer(user.id, source);
-      const [nextArticles, nextDashboard, nextResearches, nextServices, nextGrants] = await Promise.all([
+      const [nextArticles, nextResearches, nextServices, nextGrants] = await Promise.all([
         getArticles(user.id, source),
-        getDashboard(user.id),
         getResearches(user.id),
         getServices(user.id),
         getGrants(),
       ]);
       setArticles(nextArticles);
-      setDashboard(nextDashboard);
       setResearches(nextResearches);
       setServices(nextServices);
       setGrants(nextGrants);
@@ -268,6 +263,19 @@ export default function ArticleListingPage() {
 
   const { currentPage, totalPages, paginatedItems, goToPage, totalItems } = usePagination(filtered, 10);
   const isLecturer = user?.role === 'Lecturer';
+  const sourceLabel = SOURCES.find((item) => item.key === source)?.label || 'Publications';
+  const publicationTrend = useMemo(() => {
+    const countsByYear = articles.reduce((acc, article) => {
+      if (article.year == null) return acc;
+      const year = Number(article.year);
+      if (Number.isNaN(year)) return acc;
+      acc.set(year, (acc.get(year) || 0) + 1);
+      return acc;
+    }, new Map());
+
+    return Array.from(countsByYear, ([year, count]) => ({ year, count }))
+      .sort((a, b) => a.year - b.year);
+  }, [articles]);
 
   return (
     <div className="space-y-4">
@@ -342,18 +350,19 @@ export default function ArticleListingPage() {
           </div>
 
           {/* Metric Cards */}
-          <div className="p-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <MetricCard title="SINTA Score Overall" value={dashboard?.metrics?.sintaScoreOverall || 0} />
-            <MetricCard title="SINTA Score 3Yr" value={dashboard?.metrics?.sintaScore3yr || 0} />
-            <MetricCard title="Affil Score" value={dashboard?.metrics?.affilScore || 0} />
-            <MetricCard title="Affil Score 3Yr" value={dashboard?.metrics?.affilScore3yr || 0} />
+          <div className="p-4 grid grid-cols-1 gap-3">
+            <MetricCard
+              title={`Total ${sourceLabel} Publications`}
+              value={articles.length}
+              subtitle="All records in this source"
+            />
           </div>
         </div>
 
         {/* Publication Trend */}
         <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
           <h3 className="text-sm font-semibold text-gray-700 mb-3">Latest number of publications</h3>
-          <PublicationTrendChart data={dashboard?.publicationTrend || []} />
+          <PublicationTrendChart data={publicationTrend} />
         </div>
 
         {/* Actions + Pagination info */}

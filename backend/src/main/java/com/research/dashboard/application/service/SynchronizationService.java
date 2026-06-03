@@ -31,20 +31,15 @@ public class SynchronizationService {
 	private final ArticleRepository articles;
 	private final ResearchProjectRepository researches;
 	private final CommunityServiceRepository communityServices;
-	private final ScopusClient scopusClient;
-	private final GoogleScholarClient googleScholarClient;
 	private final SintaClient sintaClient;
 
 	public SynchronizationService(AppUserRepository users, LecturerProfileRepository profiles, ArticleRepository articles,
-			ResearchProjectRepository researches, CommunityServiceRepository communityServices, ScopusClient scopusClient,
-			GoogleScholarClient googleScholarClient, SintaClient sintaClient) {
+			ResearchProjectRepository researches, CommunityServiceRepository communityServices, SintaClient sintaClient) {
 		this.users = users;
 		this.profiles = profiles;
 		this.articles = articles;
 		this.researches = researches;
 		this.communityServices = communityServices;
-		this.scopusClient = scopusClient;
-		this.googleScholarClient = googleScholarClient;
 		this.sintaClient = sintaClient;
 	}
 
@@ -61,44 +56,31 @@ public class SynchronizationService {
 	}
 
 	private int synchronizeScopus(AppUser lecturer, List<String> warnings) {
-		if (isBlank(lecturer.getScopusId())) {
-			warnings.add("Scopus ID is not configured.");
+		if (isBlank(lecturer.getSintaUsername()) || isBlank(lecturer.getSintaPassword())) {
+			warnings.add("SINTA credentials are not configured.");
 			return 0;
 		}
 		try {
-			List<ArticleDto> fetched = scopusClient.fetchArticles(lecturer.getScopusId(), lecturer.getScopusApiKey(), lecturer.getScopusInstToken());
+			List<ArticleDto> fetched = sintaClient.fetchProfileScopusArticles(lecturer.getSintaUsername(), lecturer.getSintaPassword());
 			fetched.forEach(article -> upsertArticle(lecturer, article));
-			enrichScopusMetadata(lecturer, warnings);
 			return fetched.size();
 		} catch (RuntimeException exception) {
-			if (isBlank(lecturer.getSintaId())) {
-				warnings.add(message("Scopus synchronization failed.", exception));
-				return 0;
-			}
-			try {
-				List<ArticleDto> fallback = sintaClient.fetchScopusArticles(lecturer.getSintaId());
-				fallback.forEach(article -> upsertArticle(lecturer, article));
-				warnings.add(message("Scopus API failed; used SINTA Scopus view instead.", exception));
-				return fallback.size();
-			} catch (RuntimeException fallbackException) {
-				warnings.add(message("Scopus synchronization failed.", exception));
-				warnings.add(message("SINTA Scopus fallback failed.", fallbackException));
-				return 0;
-			}
+			warnings.add(message("SINTA Scopus synchronization failed.", exception));
+			return 0;
 		}
 	}
 
 	private int synchronizeGoogleScholar(AppUser lecturer, List<String> warnings) {
-		if (isBlank(lecturer.getGoogleScholarId())) {
-			warnings.add("Google Scholar ID is not configured.");
+		if (isBlank(lecturer.getSintaUsername()) || isBlank(lecturer.getSintaPassword())) {
+			warnings.add("SINTA credentials are not configured.");
 			return 0;
 		}
 		try {
-			List<ArticleDto> fetched = googleScholarClient.fetchArticles(lecturer.getGoogleScholarId());
+			List<ArticleDto> fetched = sintaClient.fetchProfileGoogleScholarArticles(lecturer.getSintaUsername(), lecturer.getSintaPassword());
 			fetched.forEach(article -> upsertArticle(lecturer, article));
 			return fetched.size();
 		} catch (RuntimeException exception) {
-			warnings.add(message("Google Scholar synchronization failed.", exception));
+			warnings.add(message("SINTA Google Scholar synchronization failed.", exception));
 			return 0;
 		}
 	}
@@ -179,7 +161,9 @@ public class SynchronizationService {
 	}
 
 	private void upsertArticle(AppUser lecturer, ArticleDto dto) {
-		Article article = !"googlescholar".equals(dto.source()) && !isBlank(dto.id())
+		Article article = isSintaProfileArticle(dto)
+				? findSintaProfileArticle(lecturer, dto)
+				: !"googlescholar".equals(dto.source()) && !isBlank(dto.id())
 				? articles.findByLecturerIdAndSourceAndExternalId(lecturer.getId(), dto.source(), dto.id())
 						.or(() -> articles.findFirstByLecturerIdAndSourceAndTitleAndPublicationYearOrderByIdAsc(lecturer.getId(), dto.source(), dto.title(), dto.year()))
 						.orElseGet(Article::new)
@@ -198,15 +182,60 @@ public class SynchronizationService {
 		articles.save(article);
 	}
 
-	private void enrichScopusMetadata(AppUser lecturer, List<String> warnings) {
-		if (isBlank(lecturer.getSintaId())) {
-			return;
+	private Article findSintaProfileArticle(AppUser lecturer, ArticleDto dto) {
+		return articles.findByLecturerIdAndSourceAndExternalId(lecturer.getId(), dto.source(), dto.id())
+				.or(() -> findBySourceLinkIdentifier(lecturer, dto))
+				.or(() -> articles.findFirstByLecturerIdAndSourceAndTitleAndPublicationYearOrderByIdAsc(lecturer.getId(), dto.source(), dto.title(), dto.year()))
+				.orElseGet(Article::new);
+	}
+
+	private java.util.Optional<Article> findBySourceLinkIdentifier(AppUser lecturer, ArticleDto dto) {
+		String candidateIdentifier = sourceLinkIdentifier(dto.link());
+		if (isBlank(candidateIdentifier)) {
+			return java.util.Optional.empty();
 		}
+		return articles.findByLecturerIdAndSource(lecturer.getId(), dto.source()).stream()
+				.filter(article -> candidateIdentifier.equals(sourceLinkIdentifier(article.getLink()))
+						|| candidateIdentifier.equals(sourceLinkIdentifier(article.getExternalId())))
+				.findFirst();
+	}
+
+	private String sourceLinkIdentifier(String value) {
+		if (isBlank(value)) {
+			return null;
+		}
+		String eid = queryValue(value, "eid");
+		if (!isBlank(eid)) {
+			return eid;
+		}
+		java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\\b2-s2\\.0-\\d+\\b").matcher(value);
+		return matcher.find() ? matcher.group() : null;
+	}
+
+	private String queryValue(String url, String key) {
 		try {
-			sintaClient.fetchScopusArticles(lecturer.getSintaId()).forEach(article -> upsertArticle(lecturer, article));
-		} catch (RuntimeException exception) {
-			warnings.add(message("SINTA Scopus metadata enrichment failed.", exception));
+			String query = java.net.URI.create(url).getQuery();
+			if (query == null) {
+				return null;
+			}
+			for (String pair : query.split("&")) {
+				String[] parts = pair.split("=", 2);
+				if (parts.length == 2 && key.equals(parts[0])) {
+					return parts[1];
+				}
+			}
+			return null;
+		} catch (IllegalArgumentException exception) {
+			return null;
 		}
+	}
+
+	private boolean isSintaProfileArticle(ArticleDto dto) {
+		return isSintaProfileExternalId(dto.id());
+	}
+
+	private boolean isSintaProfileExternalId(String externalId) {
+		return externalId != null && externalId.contains("-sinta-");
 	}
 
 	private void upsertResearch(AppUser lecturer, SintaResearchDto dto) {

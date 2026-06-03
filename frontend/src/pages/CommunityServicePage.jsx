@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Handshake, Search, X } from 'lucide-react';
 import MetricCard from '../components/ui/MetricCard';
 import PublicationTrendChart from '../components/charts/PublicationTrendChart';
@@ -8,7 +8,7 @@ import { Input, Select } from '../components/ui/FormField';
 import { useAuth } from '../context/AuthContext';
 import { usePagination } from '../hooks/usePagination';
 import { getArticles } from '../services/articleService';
-import { getDashboard, getServices, synchronizeLecturer } from '../services/dataService';
+import { getServices, synchronizeLecturer } from '../services/dataService';
 
 const SEARCH_PARAMETERS = [
   { key: 'all', label: 'All key parameters' },
@@ -37,7 +37,6 @@ export default function CommunityServicePage() {
   const [selectedPublications, setSelectedPublications] = useState({});
   const [services, setServices] = useState([]);
   const [publicationOptions, setPublicationOptions] = useState([]);
-  const [dashboard, setDashboard] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
   const isLecturer = user?.role === 'Lecturer';
@@ -46,10 +45,21 @@ export default function CommunityServicePage() {
     if (!user?.id) return;
     getServices(user.id).then(setServices);
     Promise.all([getArticles(user.id, 'scopus'), getArticles(user.id, 'googlescholar')]).then(([a, b]) => setPublicationOptions([...a, ...b]));
-    getDashboard(user.id).then(setDashboard);
   }, [user?.id]);
   const filtered = services.filter((service) => matchesSearch(service, searchQuery, searchParameter));
   const { currentPage, totalPages, paginatedItems, goToPage, totalItems } = usePagination(filtered, 10);
+  const serviceTrend = useMemo(() => {
+    const countsByYear = services.reduce((acc, service) => {
+      if (service.year == null) return acc;
+      const year = Number(service.year);
+      if (Number.isNaN(year)) return acc;
+      acc.set(year, (acc.get(year) || 0) + 1);
+      return acc;
+    }, new Map());
+
+    return Array.from(countsByYear, ([year, count]) => ({ year, count }))
+      .sort((a, b) => a.year - b.year);
+  }, [services]);
 
   function addRelatedPublication(serviceId, articleId) {
     if (!articleId) return;
@@ -73,15 +83,13 @@ export default function CommunityServicePage() {
     setSyncMessage('');
     try {
       const result = await synchronizeLecturer(user.id, 'services');
-      const [nextServices, scopusArticles, scholarArticles, nextDashboard] = await Promise.all([
+      const [nextServices, scopusArticles, scholarArticles] = await Promise.all([
         getServices(user.id),
         getArticles(user.id, 'scopus'),
         getArticles(user.id, 'googlescholar'),
-        getDashboard(user.id),
       ]);
       setServices(nextServices);
       setPublicationOptions([...scopusArticles, ...scholarArticles]);
-      setDashboard(nextDashboard);
       setSyncMessage(result.warnings?.length ? result.warnings.join(' ') : 'Synchronization completed.');
     } catch (error) {
       setSyncMessage(error.response?.data?.message || 'Synchronization failed.');
@@ -94,17 +102,18 @@ export default function CommunityServicePage() {
     <div className="space-y-4">
       {syncing && <LoadingOverlay label="Synchronizing SINTA community services..." />}
       {/* Metric Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard title="SINTA Score Overall" value={dashboard?.metrics?.sintaScoreOverall || 0} />
-        <MetricCard title="SINTA Score 3Yr" value={dashboard?.metrics?.sintaScore3yr || 0} />
-        <MetricCard title="Affil Score" value={dashboard?.metrics?.affilScore || 0} />
-        <MetricCard title="Affil Score 3Yr" value={dashboard?.metrics?.affilScore3yr || 0} />
+      <div className="grid grid-cols-1 gap-4">
+        <MetricCard
+          title="Total Community Service"
+          value={services.length}
+          subtitle="All community service records on this page"
+        />
       </div>
 
       {/* Trend Chart */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
         <h3 className="text-sm font-semibold text-gray-700 mb-4">Community Service Activity Trend</h3>
-        <PublicationTrendChart data={dashboard?.publicationTrend || []} />
+        <PublicationTrendChart data={serviceTrend} />
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">

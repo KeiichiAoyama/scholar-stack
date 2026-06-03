@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class ResearchDashboardProperties {
 
 	private final Scopus scopus = new Scopus();
-	private String httpUserAgent = "Mozilla/5.0 (compatible; ResearchDashboard/1.0)";
+	private String httpUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
 	public Scopus getScopus() {
 		return scopus;

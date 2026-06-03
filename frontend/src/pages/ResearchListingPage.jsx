@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, Search, X } from 'lucide-react';
 import MetricCard from '../components/ui/MetricCard';
 import PublicationTrendChart from '../components/charts/PublicationTrendChart';
@@ -8,7 +8,7 @@ import { Input, Select } from '../components/ui/FormField';
 import { useAuth } from '../context/AuthContext';
 import { usePagination } from '../hooks/usePagination';
 import { getArticles } from '../services/articleService';
-import { getArticleDocument, getDashboard, getResearches, synchronizeLecturer } from '../services/dataService';
+import { getArticleDocument, getResearches, synchronizeLecturer } from '../services/dataService';
 
 const STATUS_COLORS = {
   Active: 'bg-green-100 text-green-700',
@@ -43,7 +43,6 @@ export default function ResearchListingPage() {
   const [selectedPublications, setSelectedPublications] = useState({});
   const [researches, setResearches] = useState([]);
   const [publicationOptions, setPublicationOptions] = useState([]);
-  const [dashboard, setDashboard] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
   const isLecturer = user?.role === 'Lecturer';
@@ -61,10 +60,21 @@ export default function ResearchListingPage() {
         return accumulator;
       }, {}));
     });
-    getDashboard(user.id).then(setDashboard);
   }, [user?.id]);
   const filtered = researches.filter((research) => matchesSearch(research, searchQuery, searchParameter));
   const { currentPage, totalPages, paginatedItems, goToPage, totalItems } = usePagination(filtered, 10);
+  const researchTrend = useMemo(() => {
+    const countsByYear = researches.reduce((acc, research) => {
+      if (research.year == null) return acc;
+      const year = Number(research.year);
+      if (Number.isNaN(year)) return acc;
+      acc.set(year, (acc.get(year) || 0) + 1);
+      return acc;
+    }, new Map());
+
+    return Array.from(countsByYear, ([year, count]) => ({ year, count }))
+      .sort((a, b) => a.year - b.year);
+  }, [researches]);
 
   function addRelatedPublication(researchId, articleId) {
     if (!articleId) return;
@@ -88,11 +98,10 @@ export default function ResearchListingPage() {
     setSyncMessage('');
     try {
       const result = await synchronizeLecturer(user.id, 'researches');
-      const [nextResearches, scopusArticles, scholarArticles, nextDashboard] = await Promise.all([
+      const [nextResearches, scopusArticles, scholarArticles] = await Promise.all([
         getResearches(user.id),
         getArticles(user.id, 'scopus'),
         getArticles(user.id, 'googlescholar'),
-        getDashboard(user.id),
       ]);
       setResearches(nextResearches);
       const articles = [...scopusArticles, ...scholarArticles];
@@ -103,7 +112,6 @@ export default function ResearchListingPage() {
         accumulator[document.relatedId] = [...(accumulator[document.relatedId] || []), Number(document.articleId)];
         return accumulator;
       }, {}));
-      setDashboard(nextDashboard);
       setSyncMessage(result.warnings?.length ? result.warnings.join(' ') : 'Synchronization completed.');
     } catch (error) {
       setSyncMessage(error.response?.data?.message || 'Synchronization failed.');
@@ -116,17 +124,18 @@ export default function ResearchListingPage() {
     <div className="space-y-4">
       {syncing && <LoadingOverlay label="Synchronizing SINTA researches..." />}
       {/* Metric Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard title="SINTA Score Overall" value={dashboard?.metrics?.sintaScoreOverall || 0} />
-        <MetricCard title="SINTA Score 3Yr" value={dashboard?.metrics?.sintaScore3yr || 0} />
-        <MetricCard title="Affil Score" value={dashboard?.metrics?.affilScore || 0} />
-        <MetricCard title="Affil Score 3Yr" value={dashboard?.metrics?.affilScore3yr || 0} />
+      <div className="grid grid-cols-1 gap-4">
+        <MetricCard
+          title="Total Research"
+          value={researches.length}
+          subtitle="All research records on this page"
+        />
       </div>
 
       {/* Publication Trend */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
         <h3 className="text-sm font-semibold text-gray-700 mb-4">Research Activity Trend</h3>
-        <PublicationTrendChart data={dashboard?.publicationTrend || []} />
+        <PublicationTrendChart data={researchTrend} />
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
